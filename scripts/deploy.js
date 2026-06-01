@@ -3,14 +3,13 @@ const hre = require("hardhat");
 const { ethers, upgrades } = hre;
 
 async function main() {
-  const [signer] = await ethers.getSigners()
+  const [signer] = await ethers.getSigners();
 
-    const MetaNodeToken = await ethers.getContractFactory('MetaNodeToken')
-    const metaNodeToken = await MetaNodeToken.deploy()
+  const MetaNodeToken = await ethers.getContractFactory("MetaNodeToken");
+  const metaNodeToken = await MetaNodeToken.deploy();
 
-    await metaNodeToken.waitForDeployment();
-    const metaNodeTokenAddress = await metaNodeToken.getAddress();
-    
+  await metaNodeToken.waitForDeployment();
+  const metaNodeTokenAddress = await metaNodeToken.getAddress();
 
   // 1. 获取合约工厂
   const MetaNodeStake = await ethers.getContractFactory("MetaNodeStake");
@@ -28,7 +27,7 @@ async function main() {
   const stake = await upgrades.deployProxy(
     MetaNodeStake,
     [metaNodeTokenAddress, startBlock, endBlock, metaNodePerBlock],
-    { initializer: "initialize", kind: "uups" }
+    { initializer: "initialize", kind: "uups" },
   );
 
   await stake.waitForDeployment();
@@ -36,16 +35,24 @@ async function main() {
   const stakeAddress = await stake.getAddress();
 
   // 获取实现合约地址（ERC1967 标准）
-  const implAddress = await upgrades.erc1967.getImplementationAddress(stakeAddress);
+  const implAddress = await upgrades.erc1967.getImplementationAddress(
+    stakeAddress,
+  );
   console.log("MetaNodeToken deployed to:", metaNodeTokenAddress);
   console.log("MetaNodeStake (proxy) deployed to:", stakeAddress);
   console.log("MetaNodeStake (implementation) deployed to:", implAddress);
 
   // 将 MetaNode 代币转入质押合约
   const tokenAmount = await metaNodeToken.balanceOf(signer.address);
-  let tx = await metaNodeToken.connect(signer).transfer(stakeAddress, tokenAmount);
+  let tx = await metaNodeToken
+    .connect(signer)
+    .transfer(stakeAddress, tokenAmount);
   await tx.wait();
-  console.log("Transferred", ethers.formatUnits(tokenAmount, 18), "MetaNode tokens to stake contract");
+  console.log(
+    "Transferred",
+    ethers.formatUnits(tokenAmount, 18),
+    "MetaNode tokens to stake contract",
+  );
 
   // 验证实现合约
   console.log("\nVerifying implementation contract...");
@@ -86,3 +93,8 @@ main()
     console.error(error);
     process.exit(1);
   });
+
+/**
+ * 做的事：部署 MetaNodeToken，再部署 UUPS 代理版 MetaNodeStake，然后把奖励代币转到质押合约，最后尝试 Etherscan 验证。
+ * 适用场景：一键完整部署（本地或测试网）。
+ */

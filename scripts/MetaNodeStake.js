@@ -14,10 +14,15 @@ async function main() {
   const s = await upgrades.deployProxy(
     Stake,
     [MetaNodeToken, startBlock, endBlock, MetaNodePerBlock],
-    { initializer: "initialize" }
+    { initializer: "initialize" },
   );
   //await box.deployed();
   console.log("Box deployed to:", await s.getAddress());
 }
 
 main();
+
+/**
+ * 做的事：用给定的 MetaNodeToken 地址、起止区块、每块奖励部署质押代理合约。
+适用场景：你已经有 Token 合约，只想单独部署 Stake。
+ */
