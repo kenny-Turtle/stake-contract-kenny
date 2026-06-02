@@ -56,3 +56,79 @@ npx hardhat run scripts/MetaNodeStake.js --network sepolia
 ```zsh
 npx hardhat run scripts/addPool.js --network sepolia
 ```
+
+
+# 覆盖率测试
+```
+kenny@hc-xy stake-contract % npx hardhat coverage          
+
+Version
+=======
+> solidity-coverage: v0.8.17
+
+Instrumenting for coverage...
+=============================
+
+> MetaNode.sol
+> MetaNodeStake.sol
+> TestERC20.sol
+
+Compilation:
+============
+
+Compiled 33 Solidity files successfully (evm target: paris).
+
+Network Info
+============
+> HardhatEVM: v2.28.6
+> network:    hardhat
+
+
+
+  KennyTest
+erc20address:: 0x8464135c8F25Da09e49BC8782676a84730C318bC
+当前区块高度:: 1
+metaNodeStakeContract:: 0x948B3c65b89DF0B4894ABE91E6D02FE579834F8F
+    ✔ deploy (169ms)
+    ✔ setMetaNode
+    ✔ pauseWithdraw
+    ✔ unpauseWithdraw
+    ✔ pauseClaim
+    ✔ unpauseClaim
+    ✔ setStartBlock
+    ✔ setEndBlock
+    ✔ addPool
+    ✔ updatePool
+    ✔ getMultiplier
+    ✔ deposit
+
+  KennyTest - branch and edge coverage
+    ✔ covers admin-only controls and parameter guards
+    ✔ covers deposit validations for ETH and ERC20 pools
+    ✔ covers unstake and withdraw lock lifecycle for ETH and ERC20
+    ✔ covers pause guards for claim and withdraw-related functions
+    ✔ covers claim payout path and pending reset
+    ✔ covers query/update helper branches
+    ✔ covers pendingMetaNode_ = 0
+    ✔ covers _safeMetaNodeTransfer with insufficient balance
+    ✔ covers claim branch when no new reward should accrue
+    ✔ covers withdraw branch when nothing is unlocked
+    ✔ covers addPool address rule branches
+    ✔ covers getMultiplier clipping branches
+
+
+  24 passing (819ms)
+
+--------------------|----------|----------|----------|----------|----------------|
+File                |  % Stmts | % Branch |  % Funcs |  % Lines |Uncovered Lines |
+--------------------|----------|----------|----------|----------|----------------|
+ contracts/         |    95.95 |    66.67 |    97.06 |    95.85 |                |
+  MetaNode.sol      |      100 |      100 |      100 |      100 |                |
+  MetaNodeStake.sol |    95.89 |    66.67 |    96.88 |    95.81 |... 772,773,832 |
+  TestERC20.sol     |      100 |      100 |      100 |      100 |                |
+--------------------|----------|----------|----------|----------|----------------|
+All files           |    95.95 |    66.67 |    97.06 |    95.85 |                |
+--------------------|----------|----------|----------|----------|----------------|
+
+> Istanbul reports written to ./coverage/ and ./coverage.json
+```
