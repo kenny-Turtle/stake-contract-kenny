@@ -285,4 +285,137 @@ describe("KennyTest - branch and edge coverage", function () {
     );
     expect(pendingFuture).to.be.gt(0n);
   });
+
+  it("covers pendingMetaNode_ = 0", async function () {
+    // 用户2连续两次存入，中间不挖快,第二次进去_deposit函数时，用户信息中的待领取奖励是0
+    // 先存入一次，建立用户仓位
+    await stake.connect(user2).depositETH({ value: ethers.parseEther("1") });
+
+    // 将结束区块锁定到当前块，确保第二次存入不会新增奖励
+    const currentBlock = BigInt(await ethers.provider.getBlockNumber());
+    await stake.connect(admin).setEndBlock(currentBlock);
+
+    // 第二次存入时，_deposit 内部应走 pendingMetaNode_ == 0 的分支
+    await stake.connect(user2).depositETH({ value: ethers.parseEther("1") });
+
+    const userInfo = await stake.user(0, user2.address);
+    expect(userInfo.pendingMetaNode).to.equal(0n);
+  });
+
+  it("covers _safeMetaNodeTransfer with insufficient balance", async function () {
+    // 测试当质押合约的奖励代币余额不足时，_safeMetaNodeTransfer函数会走不足的分支
+    // 先让用户产生可领取奖励
+    await stake.connect(user2).depositETH({ value: ethers.parseEther("1") });
+    await mineBlocks(20);
+
+    // 管理员把质押合约里的奖励代币替换成一个新的奖励代币合约，制造奖励代币余额不足的情况
+    const NewRewardToken = await ethers.getContractFactory(
+      "MetaNodeToken",
+      admin,
+    );
+    const newRewardToken = await NewRewardToken.deploy();
+    await newRewardToken.waitForDeployment();
+
+    await stake.connect(admin).setMetaNode(await newRewardToken.getAddress());
+
+    // 用户2尝试领取奖励，虽然质押合约里没有奖励代币了，但函数应该正常执行，转账数是余额和奖励数的较小值（0），而不是全部奖励数
+    const pendingReward = await stake.pendingMetaNode(0, user2.address);
+    expect(pendingReward).to.be.gt(0n);
+
+    const rewardBefore = await newRewardToken.balanceOf(user2.address);
+    await stake.connect(user2).claim(0);
+    const rewardAfter = await newRewardToken.balanceOf(user2.address);
+
+    expect(rewardAfter).to.equal(rewardBefore); // 因为质押合约里没有奖励代币了，所以用户领取到的奖励应该是0
+  });
+
+  it("covers claim branch when no new reward should accrue", async function () {
+    await stake.connect(user1).depositETH({ value: ethers.parseEther("2") });
+    await mineBlocks(10);
+
+    await stake.connect(user1).claim(0);
+    const rewardBeforeSecondClaim = await rewardToken.balanceOf(user1.address);
+
+    // 将结束区块设置为当前区块，确保第二次 claim 不再产生新增奖励
+    const currentBlock = BigInt(await ethers.provider.getBlockNumber());
+    await stake.connect(admin).setEndBlock(currentBlock);
+
+    await stake.connect(user1).claim(0);
+    const rewardAfterSecondClaim = await rewardToken.balanceOf(user1.address);
+    expect(rewardAfterSecondClaim).to.equal(rewardBeforeSecondClaim);
+  });
+
+  it("covers withdraw branch when nothing is unlocked", async function () {
+    await stake.connect(user1).depositETH({ value: ethers.parseEther("2") });
+    await stake.connect(user1).unstake(0, ethers.parseEther("1"));
+
+    const amountBefore = await stake.withdrawAmount(0, user1.address);
+    expect(amountBefore.requestAmount).to.equal(ethers.parseEther("1"));
+    expect(amountBefore.pendingWithdrawAmount).to.equal(0n);
+
+    const stakeEthBefore = await ethers.provider.getBalance(
+      await stake.getAddress(),
+    );
+    await stake.connect(user1).withdraw(0);
+    const stakeEthAfter = await ethers.provider.getBalance(
+      await stake.getAddress(),
+    );
+
+    // 因为未到解锁区块，此次提现不应转出任何ETH
+    expect(stakeEthAfter).to.equal(stakeEthBefore);
+
+    const amountAfter = await stake.withdrawAmount(0, user1.address);
+    expect(amountAfter.requestAmount).to.equal(ethers.parseEther("1"));
+    expect(amountAfter.pendingWithdrawAmount).to.equal(0n);
+  });
+
+  it("covers addPool address rule branches", async function () {
+    // 分支A: 第一个池传非零地址应被拒绝
+    const Stake = await ethers.getContractFactory("MetaNodeStake", admin);
+    const currentBlock = BigInt(await ethers.provider.getBlockNumber());
+    const freshStake = await upgrades.deployProxy(
+      Stake,
+      [
+        await rewardToken.getAddress(),
+        currentBlock,
+        currentBlock + 1000n,
+        metaNodePerBlock,
+      ],
+      { kind: "uups" },
+    );
+    await freshStake.waitForDeployment();
+
+    await expect(
+      freshStake
+        .connect(admin)
+        .addPool(
+          await testToken.getAddress(),
+          1,
+          0,
+          unstakeLockedBlocks,
+          false,
+        ),
+    ).to.be.revertedWith("invalid staking token address");
+
+    // 分支B: 已存在池时再传零地址应被拒绝
+    await expect(
+      stake
+        .connect(admin)
+        .addPool(ethers.ZeroAddress, 1, 0, unstakeLockedBlocks, false),
+    ).to.be.revertedWith("invalid staking token address");
+  });
+
+  it("covers getMultiplier clipping branches", async function () {
+    const start = await stake.startBlock();
+    const end = await stake.endBlock();
+
+    // _from 小于 start 且 _to 大于 end 时，会被裁剪到 [start, end]
+    const clipped = await stake.getMultiplier(start - 10n, end + 10n);
+    expect(clipped).to.equal((end - start) * metaNodePerBlock);
+
+    // 非法区间分支
+    await expect(stake.getMultiplier(10n, 1n)).to.be.revertedWith(
+      "invalid block",
+    );
+  });
 });
